@@ -3,7 +3,7 @@ pub mod stats {
 
     use eframe::egui::{self, Ui};
     use egui_extras::{Column, TableBody, TableBuilder};
-    use crate::{db::classes::classes::STARTER_CLASSES, vm::vm::vm::ViewModel};
+    use crate::{db::classes::classes::STARTER_CLASSES, ui::custom::repeat_button::repeat_button::repeat_button, vm::vm::vm::ViewModel};
 
     pub fn stats(ui: &mut Ui,  vm: &mut ViewModel) {
         egui::Frame::default()
@@ -108,13 +108,22 @@ pub mod stats {
     }
 
     fn stat_field(body: &mut TableBody, range: RangeInclusive<u32>, name: &str, value: &mut u32) {
-        let field = egui::widgets::DragValue::new(value).clamp_range(range);
+        let min = *range.start();
+        let max = *range.end();
         body.row(24., |mut row| {
             row.col(|ui| {
                 ui.label(name);
             });
             row.col(|ui| {
-                ui.add(field);
+                ui.horizontal(|ui| {
+                    if repeat_button(ui, "<") {
+                        *value = (*value).saturating_sub(1).max(min);
+                    }
+                    ui.add(egui::widgets::DragValue::new(value).clamp_range(min..=max));
+                    if repeat_button(ui, ">") {
+                        *value = (*value + 1).min(max);
+                    }
+                });
             });
         });
     }
