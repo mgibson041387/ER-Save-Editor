@@ -1,0 +1,13 @@
+services:
+  er-save-editor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_PATH: ${BASE_PATH:-/er-save-editor}
+    container_name: er_save_editor
+    restart: unless-stopped
+    environment:
+      BASE_PATH: ${BASE_PATH:-/er-save-editor}
+    ports:
+      - "3130:80"

@@ -1109,9 +1109,20 @@ pub struct PlayerGameData {
     pub arche_type: u8,
     _0x3_1: [u8; 0x3],
     pub gift: u8,
-    _0x1e: [u8; 0x1e],
+    _0x1e_a: [u8; 0x3],
+    // Spirit Ash upgrade level unlocked via Roderika (0-10). Not to be confused with the
+    // Shadow of the Erdtree DLC's separate Scadutree Fragment / Revered Spirit Ash Blessing
+    // progression, whose location in the save format is not reliably known.
+    pub spirit_tuning_level: u8,
+    _0x1e_b: [u8; 0x1a],
     pub match_making_wpn_lvl: u8,
-    _0x35: [u8; 0x35],
+    _0x35_a: [u8; 0x1c],
+    // Whether the currently-equipped Great Rune's effect is active (i.e. a Rune Arc has been
+    // used on it since the last death/rest). Distinct from which Great Rune is equipped and
+    // from whether it has been restored at a Divine Tower -- this is purely the "is it
+    // currently switched on" flag.
+    pub great_rune_active: u8,
+    _0x35_b: [u8; 0x18],
     pub password: [u8; 0x12],
     pub group_password1: [u8; 0x12],
     pub group_password2: [u8; 0x12],
@@ -1158,9 +1169,13 @@ impl Default for PlayerGameData {
             arche_type: 0,
             _0x3_1: [0;0x3],
             gift:0,
-            _0x1e: [0; 0x1e],
+            _0x1e_a: [0; 0x3],
+            spirit_tuning_level: 0,
+            _0x1e_b: [0; 0x1a],
             match_making_wpn_lvl: 0,
-            _0x35: [0; 0x35],
+            _0x35_a: [0; 0x1c],
+            great_rune_active: 0,
+            _0x35_b: [0; 0x18],
             password: Default::default(),
             group_password1: Default::default(),
             group_password2: Default::default(),
@@ -1230,7 +1245,9 @@ impl Read for PlayerGameData {
         
         // Gender
         player_game_data.gender = br.read_u8()?;
-        assert!(player_game_data.gender == 0 || player_game_data.gender == 1);
+        if player_game_data.gender != 0 && player_game_data.gender != 1 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unexpected gender byte: {}", player_game_data.gender)));
+        }
 
         // ArcheType
         player_game_data.arche_type = br.read_u8()?;
@@ -1240,12 +1257,16 @@ impl Read for PlayerGameData {
         // Gift
         player_game_data.gift = br.read_u8()?;
 
-        player_game_data._0x1e.copy_from_slice(br.read_bytes(0x1e)?);
+        player_game_data._0x1e_a.copy_from_slice(br.read_bytes(0x3)?);
+        player_game_data.spirit_tuning_level = br.read_u8()?;
+        player_game_data._0x1e_b.copy_from_slice(br.read_bytes(0x1a)?);
 
         // Weapon Match Making Level
         player_game_data.match_making_wpn_lvl  = br.read_u8()?;
 
-        player_game_data._0x35.copy_from_slice(br.read_bytes(0x35)?);
+        player_game_data._0x35_a.copy_from_slice(br.read_bytes(0x1c)?);
+        player_game_data.great_rune_active = br.read_u8()?;
+        player_game_data._0x35_b.copy_from_slice(br.read_bytes(0x18)?);
 
         // Passwords
         let password = br.read_bytes(0x12)?;
@@ -1339,12 +1360,16 @@ impl Write for PlayerGameData {
         // Gift
         bytes.push(self.gift);
 
-        bytes.extend(self._0x1e);
+        bytes.extend(self._0x1e_a);
+        bytes.push(self.spirit_tuning_level);
+        bytes.extend(self._0x1e_b);
 
         // Weapon Match Making Level
         bytes.push(self.match_making_wpn_lvl);
 
-        bytes.extend(self._0x35);
+        bytes.extend(self._0x35_a);
+        bytes.push(self.great_rune_active);
+        bytes.extend(self._0x35_b);
 
         // Passwords
         bytes.extend(self.password);
@@ -1647,7 +1672,9 @@ impl Read for SaveSlot {
 
         save_slot._0x1_2 = br.read_u32()?;
         // Value should always be 2 for active accounts. 0 for empty ones.
-        assert!(save_slot._0x1_2 == 2 || save_slot._0x1_2 == 0);
+        if save_slot._0x1_2 != 2 && save_slot._0x1_2 != 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unexpected _0x1_2 value: {}", save_slot._0x1_2)));
+        }
 
         save_slot._cs_net_data_chunks.copy_from_slice( br.read_bytes(0x20000)?);
         
@@ -1806,5 +1833,82 @@ impl Write for SaveSlot {
         bytes.extend(vec![0;0x280000-bytes.len()]);
 
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod player_game_data_tests {
+    use super::*;
+
+    // Verifies the _0x1e split (spirit_tuning_level carved out at relative byte 0x1e_a.len() = 3)
+    // preserves exact round-trip byte fidelity, and that the byte we claim is spirit_tuning_level
+    // ends up at absolute offset 0xBF (191) within PlayerGameData -- the offset independently
+    // corroborated against another project's documented save structure.
+    #[test]
+    fn spirit_tuning_level_round_trips_at_expected_offset() {
+        // Build a buffer large enough for one PlayerGameData with a distinct, recognizable byte
+        // pattern so a misplaced read/write is easy to spot.
+        let mut input = vec![0u8; 600];
+        for (i, b) in input.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        // gender must be 0 or 1 to pass validation; keep it deterministic.
+        input[182] = 0;
+        input[191] = 7; // spirit_tuning_level marker value, within 0-10 range
+
+        let mut br = BinaryReader::from_u8(&input);
+        br.set_endian(binary_reader::Endian::Little);
+        let player_game_data = PlayerGameData::read(&mut br).expect("should parse a well-formed buffer");
+
+        assert_eq!(player_game_data.spirit_tuning_level, 7, "byte 191 (0xBF) must map to spirit_tuning_level");
+
+        let written = player_game_data.write().expect("write should succeed");
+        assert_eq!(written, input[0..written.len()], "round-tripped bytes must exactly match the input");
+
+        // Now change spirit_tuning_level via the field and confirm only that byte differs on write.
+        let mut modified = player_game_data.clone();
+        modified.spirit_tuning_level = 10;
+        let written_modified = modified.write().expect("write should succeed");
+        for (i, (&orig, &new)) in written.iter().zip(written_modified.iter()).enumerate() {
+            if i == 191 {
+                assert_eq!(new, 10);
+            } else {
+                assert_eq!(orig, new, "byte {i} should be unchanged when only spirit_tuning_level is modified");
+            }
+        }
+    }
+
+    // Same rationale as spirit_tuning_level_round_trips_at_expected_offset, for
+    // great_rune_active at absolute offset 0xF7 (247) -- independently corroborated against
+    // three other already-verified fields in the same reference (gender=182, arche_type=183,
+    // match_making_wpn_lvl=218) before trusting this one.
+    #[test]
+    fn great_rune_active_round_trips_at_expected_offset() {
+        let mut input = vec![0u8; 600];
+        for (i, b) in input.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        input[182] = 0; // gender must be 0 or 1
+        input[247] = 1; // great_rune_active marker value
+
+        let mut br = BinaryReader::from_u8(&input);
+        br.set_endian(binary_reader::Endian::Little);
+        let player_game_data = PlayerGameData::read(&mut br).expect("should parse a well-formed buffer");
+
+        assert_eq!(player_game_data.great_rune_active, 1, "byte 247 (0xF7) must map to great_rune_active");
+
+        let written = player_game_data.write().expect("write should succeed");
+        assert_eq!(written, input[0..written.len()], "round-tripped bytes must exactly match the input");
+
+        let mut modified = player_game_data.clone();
+        modified.great_rune_active = 0;
+        let written_modified = modified.write().expect("write should succeed");
+        for (i, (&orig, &new)) in written.iter().zip(written_modified.iter()).enumerate() {
+            if i == 247 {
+                assert_eq!(new, 0);
+            } else {
+                assert_eq!(orig, new, "byte {i} should be unchanged when only great_rune_active is modified");
+            }
+        }
     }
 }

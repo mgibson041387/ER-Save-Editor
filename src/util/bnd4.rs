@@ -3,6 +3,17 @@ pub mod bnd4 {
     use binary_reader::{BinaryReader, Endian};
     use encoding_rs::{SHIFT_JIS, UTF_16BE, UTF_16LE};
 
+    fn invalid_data(msg: impl Into<String>) -> Error {
+        Error::new(std::io::ErrorKind::InvalidData, msg.into())
+    }
+
+    fn expect_eq<T: PartialEq + std::fmt::Debug>(actual: T, expected: T, what: &str) -> Result<(), Error> {
+        if actual != expected {
+            return Err(invalid_data(format!("{what}: expected {expected:?}, got {actual:?}")));
+        }
+        Ok(())
+    }
+
     bitflags::bitflags! {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub struct Format: u8 {
@@ -145,10 +156,10 @@ pub mod bnd4 {
                 ((raw_flags & 0b10000000) >> 7)
             };
 
-            assert_eq!(br.read_u8()?, 0);
-            assert_eq!(br.read_u8()?, 0);
-            assert_eq!(br.read_u8()?, 0);
-            assert_eq!(br.read_i32()?, -1);
+            expect_eq(br.read_u8()?, 0, "binder file header reserved byte 0")?;
+            expect_eq(br.read_u8()?, 0, "binder file header reserved byte 1")?;
+            expect_eq(br.read_u8()?, 0, "binder file header reserved byte 2")?;
+            expect_eq(br.read_i32()?, -1, "binder file header sentinel")?;
 
             let compressed_size = br.read_i64()?;
             
@@ -223,7 +234,7 @@ pub mod bnd4 {
 
             if format == Format::Names1 {
                 id = br.read_i32()?;
-                assert_eq!(br.read_i32()?, 0);
+                expect_eq(br.read_i32()?, 0, "Names1 trailing reserved i32")?;
             }
             
 
@@ -309,17 +320,16 @@ pub mod bnd4 {
 
         #[allow(unused)]
         pub fn is(&self, br: &mut BinaryReader) -> bool {
-            if br.length < 4 {
-                return false;
+            match br.read_bytes(4) {
+                Ok(magic) => magic == b"BND4",
+                Err(_) => false,
             }
-            let magic = br.read_bytes(4).unwrap();
-            magic == b"BND4"
         }
 
         pub fn from_bytes(bytes: &[u8]) -> Result<BND4, Error>{
             let mut br = BinaryReader::from_u8(bytes);
             let mut bnd4 = BND4::new();
-            bnd4.read(&mut br).expect("");
+            bnd4.read(&mut br)?;
             Ok(bnd4)
         }
 
@@ -332,22 +342,22 @@ pub mod bnd4 {
         }
 
         fn read_header(&mut self, br: &mut BinaryReader) -> Result<Vec<BinderHeader>, Error> {
-            assert_eq!(br.read_bytes(4)?, b"BND4");
+            expect_eq(br.read_bytes(4)?, b"BND4".as_slice(), "BND4 magic")?;
 
             self.unk04 = br.read_bool()?;
             self.unk05 = br.read_bool()?;
-            assert_eq!(br.read_u8()?, 0);
-            assert_eq!(br.read_u8()?, 0);
+            expect_eq(br.read_u8()?, 0, "BND4 header reserved byte 0")?;
+            expect_eq(br.read_u8()?, 0, "BND4 header reserved byte 1")?;
 
-            assert_eq!(br.read_u8()?, 0);
+            expect_eq(br.read_u8()?, 0, "BND4 header reserved byte 2")?;
             self.big_endian = br.read_bool()?;
             self.bit_big_endian = br.read_bool()?;
-            assert_eq!(br.read_u8()?, 0);
+            expect_eq(br.read_u8()?, 0, "BND4 header reserved byte 3")?;
 
             br.set_endian(if self.big_endian {binary_reader::Endian::Big} else {Endian::Little});
 
             let file_count = br.read_i32()?;
-            assert_eq!(br.read_i64()?, 0x40);
+            expect_eq(br.read_i64()?, 0x40, "BND4 header size field")?;
             
             let bytes = br.read_bytes(8)?;
             let mut terminator = 0;
@@ -382,7 +392,6 @@ pub mod bnd4 {
                 ((raw_format & 0b01000000) >> 5) |
                 ((raw_format & 0b10000000) >> 7)) as u8)
             };
-
             let b = br.read_u8()?;
             self.extended = -1;
             if  b == 0 {
@@ -394,10 +403,12 @@ pub mod bnd4 {
             } else if b == 0x80 {
                 self.extended = 0x80;
             };
-            assert!(self.extended == 0 || self.extended == 1 || self.extended == 4 || self.extended == 0x80);
-            assert_eq!(br.read_u8()?, 0);
+            if self.extended != 0 && self.extended != 1 && self.extended != 4 && self.extended != 0x80 {
+                return Err(invalid_data(format!("BND4 unrecognized extended flag byte: {b:#X}")));
+            }
+            expect_eq(br.read_u8()?, 0, "BND4 header reserved byte 4")?;
 
-            assert_eq!(br.read_i32()?, 0);
+            expect_eq(br.read_i32()?, 0, "BND4 header reserved i32")?;
 
             if self.extended == 4 {
                 let hash_table_offset = br.read_i64()?;
@@ -405,18 +416,25 @@ pub mod bnd4 {
                 br.jmp(hash_table_offset as usize);
                 let _unused01 = br.read_i64();
                 let _unused02 = br.read_i32();
-                assert_eq!(br.read_u8()?, 0x10);
-                assert_eq!(br.read_u8()?, 8);
-                assert_eq!(br.read_u8()?, 8);
-                assert_eq!(br.read_u8()?, 0);
+                expect_eq(br.read_u8()?, 0x10, "BND4 hash table reserved byte 0")?;
+                expect_eq(br.read_u8()?, 8, "BND4 hash table reserved byte 1")?;
+                expect_eq(br.read_u8()?, 8, "BND4 hash table reserved byte 2")?;
+                expect_eq(br.read_u8()?, 0, "BND4 hash table reserved byte 3")?;
                 br.jmp(prev_pos);
             }
             else {
-                assert_eq!(br.read_i64()?, 0);
+                expect_eq(br.read_i64()?, 0, "BND4 header reserved i64")?;
             }
 
             if file_header_size != Binder::get_bnd4_header_size(format) {
-                panic!("File header size for format {} is expected to be {:#X}, but was {:#X}", self.format.as_i32(), Binder::get_bnd4_header_size(self.format), file_header_size);
+                return Err(invalid_data(format!(
+                    "File header size for format {} is expected to be {:#X}, but was {:#X}",
+                    format.as_i32(), Binder::get_bnd4_header_size(format), file_header_size
+                )));
+            }
+
+            if file_count < 0 || file_count as i64 > 100_000 {
+                return Err(invalid_data(format!("BND4 file count out of range: {file_count}")));
             }
 
             let mut file_headers: Vec<BinderHeader> = Vec::with_capacity(file_count as usize);

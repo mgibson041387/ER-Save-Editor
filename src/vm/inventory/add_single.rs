@@ -590,10 +590,18 @@ impl InventoryViewModel {
     fn add_gaitem(&mut self, gaitem: GaItem, is_aow: bool) {
         match is_aow {
             true => {
+                if self.next_aow_index >= self.gaitem_map.len() {
+                    self.log.insert(0, "Failed! Gaitem map is full.".to_string());
+                    return;
+                }
                 self.gaitem_map[self.next_aow_index] = gaitem;
                 self.next_aow_index = self.next_aow_index + 1;
             },
             false => {
+                if self.next_armament_or_armor_index >= self.gaitem_map.len() {
+                    self.log.insert(0, "Failed! Gaitem map is full.".to_string());
+                    return;
+                }
                 self.gaitem_map[self.next_armament_or_armor_index] = gaitem;
                 self.next_armament_or_armor_index = self.next_armament_or_armor_index + 1;
             },
@@ -602,12 +610,19 @@ impl InventoryViewModel {
 
     fn add_to_storage_common_items(&mut self, gaitem_handle: u32, id: u32, quantity: u32, storage_index: usize, name: String, r#type: InventoryGaitemType){
         // Determine equipindex offset based on storage type 0 = held, 1 = storage box
-        let equip_index_offset = match storage_index { 0 => 0x180, 1 => 0x7F, _ => panic!("Index out of bounds!") };
+        let equip_index_offset = match storage_index { 0 => 0x180, 1 => 0x7F, _ => {
+            self.log.insert(0, format!("Failed! Invalid storage index {storage_index}."));
+            return;
+        } };
 
         // Prepare new item indexes
         let storage = &mut self.storage[storage_index];
         let items = &mut storage.common_items;
         let index = storage.common_item_count;
+        if index as usize >= items.len() {
+            self.log.insert(0, "Failed! Storage is full.".to_string());
+            return;
+        }
         let equip_index = equip_index_offset + storage.common_item_count;
         let acquisiton_sort_order_index = storage.next_acquisition_sort_order_index;
 
@@ -640,12 +655,19 @@ impl InventoryViewModel {
 
     fn add_to_storage_key_items(&mut self, gaitem_handle: u32, id: u32, quantity: u32, storage_index: usize, name: String, r#type: InventoryGaitemType) {
         // Determine equipindex offset based on storage type 0 = held, 1 = storage box
-        let equip_index_offset = match storage_index { 0 => 0x180, 1 => 0x7F, _ => panic!("Index out of bounds!") };
+        let equip_index_offset = match storage_index { 0 => 0x180, 1 => 0x7F, _ => {
+            self.log.insert(0, format!("Failed! Invalid storage index {storage_index}."));
+            return;
+        } };
 
         // Prepare new item indexes
         let storage = &mut self.storage[storage_index];
         let items = &mut storage.key_items;
         let index = storage.key_item_count;
+        if index as usize >= items.len() {
+            self.log.insert(0, "Failed! Key item storage is full.".to_string());
+            return;
+        }
         let equip_index = equip_index_offset + storage.key_item_count;
         let acquisiton_sort_order_index = storage.next_acquisition_sort_order_index;
 
@@ -667,10 +689,14 @@ impl InventoryViewModel {
     }
 
     fn upsert_gaitem_data_list(&mut self, id: u32) {
-        // Add item to gaitem data if not present 
+        // Add item to gaitem data if not present
         let next_gaitem_data_index = self.gaitem_data.distinct_aquired_items_count;
         let gaitem_data_items = &mut self.gaitem_data.ga_items;
         if !gaitem_data_items.iter().any(|item| item.id == id) {
+            if next_gaitem_data_index as usize >= gaitem_data_items.len() {
+                self.log.insert(0, "Failed! Gaitem data list is full.".to_string());
+                return;
+            }
             gaitem_data_items[next_gaitem_data_index as usize] = GaItem2{
                 id: id,
                 unk: 0,

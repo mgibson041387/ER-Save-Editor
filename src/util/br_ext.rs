@@ -114,7 +114,10 @@ pub mod br_ext {
 
             match res {
                 Ok(str) => Ok(str),
-                Err(err) => panic!("Failed to read string: {err}"),
+                Err(err) => {
+                    eprintln!("Failed to read string: {err}");
+                    Ok(String::from_utf8_lossy(&err.into_bytes()).into_owned())
+                },
             }
         }
 
@@ -164,10 +167,9 @@ pub mod br_ext {
             let bytes = Self::read_chars_terminated(br)?;
             let (res, _enc, errors) = SHIFT_JIS.decode(&bytes);
             if errors {
-                panic!("Failed to read string!");
-            } else {
-                Ok(res.to_string())
-            }  
+                eprintln!("Failed to read string!");
+            }
+            Ok(res.to_string())
         }
 
         fn read_chars_terminated(br: &mut BinaryReader) -> Result<Vec<u8>, Error> {

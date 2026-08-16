@@ -1,4 +1,5 @@
 pub mod item_name;
+pub mod item_image_url;
 pub mod weapon_name;
 pub mod armor_name;
 pub mod aow_name;

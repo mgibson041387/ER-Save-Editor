@@ -52,7 +52,9 @@ impl Read for UserData10 {
 
         for i in 0..0xA {
             let slot_active = br.read_bytes(1)?[0];
-            assert!(slot_active == 0x1 || slot_active == 0x0);
+            if slot_active != 0x1 && slot_active != 0x0 {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unexpected active_slot byte: {slot_active:#X}")));
+            }
             user_data_10.active_slot[i] = slot_active == 0x1;
         }
         

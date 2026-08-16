@@ -3,6 +3,14 @@ name = "er-save-editor"
 version = "0.0.22"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "er-save-editor"
+path = "src/main.rs"
+
 [dependencies]
 aes = "0.8.4"
 binary-reader = "0.4.5"
@@ -10,20 +18,43 @@ bitflags = "2.4.2"
 cbc = "0.1.2"
 eframe = "0.26.2"
 egui-phosphor = { version = "0.4.0", features = ["regular", "fill"] }
-egui_extras = "0.26.2"
+egui_extras = { version = "0.26.2", features = ["http", "image"] }
 encoding_rs = "0.8.33"
 env_logger = "0.11.2"
 image = "0.25.0"
+# egui_extras pulls in its own separate copy of the `image` crate (0.24.x, distinct from our
+# 0.25.0 above -- Cargo does not unify across semver-incompatible major versions) with
+# default-features = false and no format decoders enabled, so egui's image loader can fetch
+# bytes but never actually decode them into pixels. Declaring it explicitly here with the
+# decoders we need triggers Cargo's feature unification for that exact (name, version) pair,
+# turning them on for egui_extras's copy too even though we never reference this alias directly.
+image_extras_loader_decoders = { package = "image", version = "0.24", default-features = false, features = ["png", "jpeg", "webp"] }
 md5 = "0.7.0"
 once_cell = "1.19.0"
 regex = "1.10.4"
-reqwest = { version = "0.12.3", features = ["json", "blocking"] }
 rfd = "0.13.0"
 rust-embed = "8.3.0"
+ruzstd = "0.9.0"
 serde = { version = "1.0.198", features = ["derive"] }
 serde_json = "1.0.116"
 strsim = "0.11.0"
-zstd = "0.13.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.3.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.7"
+log = "0.4"
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlElement"] }
 
 [build-dependencies]
 winres = "0.1.12"
+
+# codegen-units=1 works around a rustc/LLVM wasm32 codegen bug where parallel
+# codegen units can independently emit two monomorphized shims under the same
+# mangled export name, producing a wasm module with duplicate exports that
+# real WASM engines (and wasm-opt) reject outright.
+[profile.release]
+codegen-units = 1

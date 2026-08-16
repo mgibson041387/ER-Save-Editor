@@ -4,6 +4,17 @@ pub mod params {
     use binary_reader::{BinaryReader, Endian};
     use crate::util::br_ext::br_ext::BinaryReaderExtensions as br_ext;
 
+    fn invalid_data(msg: impl Into<String>) -> Error {
+        Error::new(std::io::ErrorKind::InvalidData, msg.into())
+    }
+
+    fn expect_eq<T: PartialEq + std::fmt::Debug>(actual: T, expected: T, what: &str) -> Result<(), Error> {
+        if actual != expected {
+            return Err(invalid_data(format!("{what}: expected {expected:?}, got {actual:?}")));
+        }
+        Ok(())
+    }
+
     #[allow(non_camel_case_types)]
     #[derive(Clone, PartialEq, Hash, Eq)]
     pub enum Param {
@@ -448,8 +459,11 @@ pub mod params {
             let size = mem::size_of::<T>();
             let bytes = br.read_bytes(size)?;
             let (head, body, _tail) = unsafe { bytes.align_to::<T>() };
-            assert!(head.is_empty(), "Data was not aligned");
-            row.data = body[0].clone();
+            if !head.is_empty() {
+                return Err(invalid_data("Param row data was not aligned"));
+            }
+            let first = body.first().ok_or_else(|| invalid_data("Param row data was empty"))?;
+            row.data = first.clone();
             br.jmp(prev_pos);
 
             Ok(row)
@@ -538,7 +552,9 @@ pub mod params {
 
             br.jmp(0x2c);
             let big_endian = br.read_u8()?;
-            assert!(big_endian == 0 || big_endian == 0xFF);
+            if big_endian != 0 && big_endian != 0xFF {
+                return Err(invalid_data(format!("PARAM big_endian byte out of range: {big_endian:#X}")));
+            }
             param.big_endian = big_endian == 0xFF;
             br.set_endian(if param.big_endian {Endian::Big} else {Endian::Little});
             param.format2d = FormatFlags1::from_bits_truncate(br.read_u8()?);
@@ -549,7 +565,7 @@ pub mod params {
             let mut actual_string_offset = 0;
             let string_offset = br.read_u32()?;
             if ((param.format2d & FormatFlags1::Flag01).as_u8() != 0) && ((param.format2d & FormatFlags1::IntDataOffset).as_u8() != 0) || ((param.format2d & FormatFlags1::LongDataOffset).as_u8() != 0) {
-                assert_eq!(br.read_i16()?, 0);
+                expect_eq(br.read_i16()?, 0, "PARAM reserved i16")?;
             }
             else {
                 br.read_i16()?;
@@ -559,9 +575,9 @@ pub mod params {
             
             let row_count = br.read_i16()?;
             if (param.format2d & FormatFlags1::OffsetParamType).as_u8() != 0 {
-                assert_eq!(br.read_i32()?, 0);
+                expect_eq(br.read_i32()?, 0, "PARAM reserved i32 before param_type_offset")?;
                 let param_type_offset = br.read_i64()?;
-                assert_eq!(br.read_bytes(0x14)?, [0x0; 0x14]);
+                expect_eq(br.read_bytes(0x14)?, [0x0; 0x14].as_slice(), "PARAM reserved padding")?;
                 param.param_type = br_ext::get_ascii(br, param_type_offset as usize)?;
                 actual_string_offset = param_type_offset;
             }
@@ -572,13 +588,13 @@ pub mod params {
             
             if (param.format2d & FormatFlags1::Flag01).as_u8() != 0 && (param.format2d & FormatFlags1::IntDataOffset).as_u8() != 0 {
                 br.read_i32()?;
-                assert_eq!(br.read_i32()?, 0);
-                assert_eq!(br.read_i32()?, 0);
-                assert_eq!(br.read_i32()?, 0);
-            } 
+                expect_eq(br.read_i32()?, 0, "PARAM reserved i32 (1)")?;
+                expect_eq(br.read_i32()?, 0, "PARAM reserved i32 (2)")?;
+                expect_eq(br.read_i32()?, 0, "PARAM reserved i32 (3)")?;
+            }
             else if (param.format2d & FormatFlags1::LongDataOffset).as_u8() != 0 {
                 br.read_i64()?;
-                assert_eq!(br.read_i64()?, 0);
+                expect_eq(br.read_i64()?, 0, "PARAM reserved i64")?;
             }
 
             for _i in 0..row_count {

@@ -286,6 +286,15 @@ fn bulk(ui: &mut Ui, inventory_vm: &mut InventoryViewModel) {
         ui.add_space(8.);
 
         ui.horizontal(|ui| {
+            let label = ui.label("Search:");
+            ui.add(egui::TextEdit::singleline(&mut inventory_vm.bulk_filter_text)).labelled_by(label.id);
+        });
+        let search = inventory_vm.bulk_filter_text.to_lowercase();
+        let searching = !search.is_empty();
+
+        ui.add_space(4.);
+
+        ui.horizontal(|ui| {
             let is_all_selected = inventory_vm.bulk_items_selected.iter().all(|map| map.values().all(|on|*on));
             let is_any_selected = inventory_vm.bulk_items_selected.iter().any(|map| map.values().any(|on|*on));
             let state = if is_all_selected {State::On} else if is_any_selected {State::InBetween} else {State::Off};
@@ -307,54 +316,88 @@ fn bulk(ui: &mut Ui, inventory_vm: &mut InventoryViewModel) {
                 InventoryTypeRoute::KeyItems |
                 InventoryTypeRoute::CommonItems => {
                     for (index, (group_name, items)) in items().iter().enumerate() {
+                        let names = ITEM_NAME.lock().unwrap();
+                        let matches: Vec<_> = items.iter().filter(|item| {
+                            !searching || names.get(&(*item ^ 0x40000000)).is_some_and(|n| n.to_lowercase().contains(&search))
+                        }).collect();
+                        if matches.is_empty() { continue; }
                         ui.horizontal(|ui| {
                             select_all_sub_group_checkbox(ui, inventory_vm, index);
-                            ui.collapsing(group_name, |ui| {
-                                for item in items {
-                                    ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&item).unwrap(), ITEM_NAME.lock().unwrap()[&(item ^ 0x40000000)]);
+                            let mut render_items = |ui: &mut Ui| {
+                                for item in &matches {
+                                    ui.checkbox(inventory_vm.bulk_items_selected[index].get_mut(*item).unwrap(), names[&(**item ^ 0x40000000)]);
                                 }
-                            });
+                            };
+                            if searching {
+                                ui.vertical(|ui| { ui.label(group_name); render_items(ui); });
+                            } else {
+                                ui.collapsing(group_name, render_items);
+                            }
                         });
                     }
                 },
                 InventoryTypeRoute::Weapons => {
                     for (index, (group_name, weapons)) in weapons().iter().enumerate() {
+                        let names = WEAPON_NAME.lock().unwrap();
+                        let matches: Vec<_> = weapons.iter().filter(|weapon| {
+                            !searching || names.get(*weapon).is_some_and(|n| n.to_lowercase().contains(&search))
+                        }).collect();
+                        if matches.is_empty() { continue; }
                         ui.horizontal(|ui| {
                             select_all_sub_group_checkbox(ui, inventory_vm, index);
-                            ui.collapsing(group_name, |ui| {
-                                for weapon in weapons {
-                                    ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&weapon).unwrap(), WEAPON_NAME.lock().unwrap()[&weapon]);
+                            let mut render_items = |ui: &mut Ui| {
+                                for weapon in &matches {
+                                    ui.checkbox(inventory_vm.bulk_items_selected[index].get_mut(*weapon).unwrap(), names[*weapon]);
                                 }
-                            });
+                            };
+                            if searching {
+                                ui.vertical(|ui| { ui.label(group_name); render_items(ui); });
+                            } else {
+                                ui.collapsing(group_name, render_items);
+                            }
                         });
                     }
                 },
                 InventoryTypeRoute::Armors => {
                     for (index, (group_name, armor_sets)) in armor_sets().iter().enumerate() {
+                        let names = ARMOR_NAME.lock().unwrap();
+                        let matches: Vec<_> = armor_sets.iter().filter(|armor| {
+                            !searching || names.get(&(*armor ^ 0x10000000)).is_some_and(|n| n.to_lowercase().contains(&search))
+                        }).collect();
+                        if matches.is_empty() { continue; }
                         ui.horizontal(|ui| {
                             select_all_sub_group_checkbox(ui, inventory_vm, index);
-                            ui.collapsing(group_name, |ui| {
-                                for armor in armor_sets {
-                                    ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&armor).unwrap(), ARMOR_NAME.lock().unwrap()[&(armor ^ 0x10000000)]);
+                            let mut render_items = |ui: &mut Ui| {
+                                for armor in &matches {
+                                    ui.checkbox(inventory_vm.bulk_items_selected[index].get_mut(*armor).unwrap(), names[&(**armor ^ 0x10000000)]);
                                 }
-                            });
+                            };
+                            if searching {
+                                ui.vertical(|ui| { ui.label(group_name); render_items(ui); });
+                            } else {
+                                ui.collapsing(group_name, render_items);
+                            }
                         });
                     }
                 },
                 InventoryTypeRoute::AshOfWar => {
                     for (index, (_, aows)) in aows().iter().enumerate() {
+                        let names = AOW_NAME.lock().unwrap();
                         ui.vertical(|ui| {
                             for aow in aows {
-                                ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&aow).unwrap(), AOW_NAME.lock().unwrap()[&(aow ^ 0x80000000)]);
+                                if searching && !names.get(&(aow ^ 0x80000000)).is_some_and(|n| n.to_lowercase().contains(&search)) { continue; }
+                                ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&aow).unwrap(), names[&(aow ^ 0x80000000)]);
                             }
                         });
                     }
                 },
                 InventoryTypeRoute::Talismans => {
                     for (index, (_, talismans)) in talismans().iter().enumerate() {
+                        let names = ACCESSORY_NAME.lock().unwrap();
                         ui.vertical(|ui| {
                             for talisman in talismans {
-                                ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&talisman).unwrap(), ACCESSORY_NAME.lock().unwrap()[&(talisman ^ 0x20000000)]);
+                                if searching && !names.get(&(talisman ^ 0x20000000)).is_some_and(|n| n.to_lowercase().contains(&search)) { continue; }
+                                ui.checkbox(&mut inventory_vm.bulk_items_selected[index].get_mut(&talisman).unwrap(), names[&(talisman ^ 0x20000000)]);
                             }
                         });
                     }

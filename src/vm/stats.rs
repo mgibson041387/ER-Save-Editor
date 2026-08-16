@@ -14,7 +14,9 @@ pub mod stats_view_model {
         pub arcane: u32,
         pub level: u32,
         pub souls: u32,
-        pub soulsmemory: u32
+        pub soulsmemory: u32,
+        pub spirit_tuning_level: u8,
+        pub great_rune_active: bool
     }
 
     impl Default for StatsViewModel {
@@ -29,9 +31,11 @@ pub mod stats_view_model {
                 intelligence: Default::default(), 
                 faith: Default::default(), 
                 arcane: Default::default(),
-                level: Default::default(), 
-                souls: Default::default(), 
-                soulsmemory: Default::default(), 
+                level: Default::default(),
+                souls: Default::default(),
+                soulsmemory: Default::default(),
+                spirit_tuning_level: Default::default(),
+                great_rune_active: Default::default(),
             }
         }
     }
@@ -50,6 +54,8 @@ pub mod stats_view_model {
             let level = slot.player_game_data.level;
             let souls = slot.player_game_data.souls;
             let soulsmemory = slot.player_game_data.soulsmemory;
+            let spirit_tuning_level = slot.player_game_data.spirit_tuning_level;
+            let great_rune_active = slot.player_game_data.great_rune_active != 0;
 
             Self {
                 arche_type,
@@ -63,7 +69,9 @@ pub mod stats_view_model {
                 arcane,
                 level,
                 souls,
-                soulsmemory
+                soulsmemory,
+                spirit_tuning_level,
+                great_rune_active
             }
         }
     }
