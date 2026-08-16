@@ -58,6 +58,35 @@ pub mod stats {
                         // Space
                         self::space(&mut body, 8.);
 
+                        // Spirit Tuning Level (base-game Spirit Ash upgrade level via Roderika, 0-10).
+                        // Not the Shadow of the Erdtree DLC's separate Scadutree Fragment / Revered
+                        // Spirit Ash Blessing progression.
+                        let spirit_tuning_field = egui::widgets::DragValue::new(&mut vm.slots[vm.index].stats_vm.spirit_tuning_level)
+                            .clamp_range(0..=10);
+                        body.row(24., |mut row| {
+                            row.col(|ui| {
+                                ui.label("Spirit Tuning Level:");
+                            });
+                            row.col(|ui| {
+                                ui.add(spirit_tuning_field);
+                            });
+                        });
+
+                        // Whether the currently-equipped Great Rune's effect is switched on
+                        // (i.e. a Rune Arc has been used since the last death/rest). Does not
+                        // change which rune is equipped or whether it's been restored.
+                        body.row(24., |mut row| {
+                            row.col(|ui| {
+                                ui.label("Great Rune Active:");
+                            });
+                            row.col(|ui| {
+                                ui.checkbox(&mut vm.slots[vm.index].stats_vm.great_rune_active, "");
+                            });
+                        });
+
+                        // Space
+                        self::space(&mut body, 8.);
+
                         // Souls
                         let field = egui::widgets::DragValue::new(&mut vm.slots[vm.index].stats_vm.souls)
                             .clamp_range(0..=999999999)

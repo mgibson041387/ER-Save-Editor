@@ -10,6 +10,7 @@ pub mod menu {
         Inventory,
         EventFlags,
         Regions,
+        Cheats,
     }
 
     pub fn menu(ui: &mut Ui, app:&mut App) {
@@ -20,7 +21,9 @@ pub mod menu {
         let inventory = ui.add_sized([120., 40.], egui::Button::new("Inventory"));
         let event_flags = ui.add_sized([120., 40.], egui::Button::new("Event Flags"));
         let regions = ui.add_sized([120., 40.], egui::Button::new("Regions"));
-        
+        ui.add_space(8.0);
+        let cheats = ui.add_sized([120., 40.], egui::Button::new("Quick Cheats"));
+
         // Listen for clicks
         if  general.clicked() {app.current_route = Route::General;}
         if  stats.clicked() {app.current_route = Route::Stats;}
@@ -28,8 +31,9 @@ pub mod menu {
         if  inventory.clicked() {app.current_route = Route::Inventory}
         if  event_flags.clicked() {app.current_route = Route::EventFlags}
         if  regions.clicked() {app.current_route = Route::Regions}
+        if  cheats.clicked() {app.current_route = Route::Cheats}
 
-        // Highlight active 
+        // Highlight active
         match app.current_route {
             Route::None => {},
             Route::General => {general.highlight();},
@@ -38,6 +42,7 @@ pub mod menu {
             Route::Inventory => {inventory.highlight();},
             Route::EventFlags => {event_flags.highlight();},
             Route::Regions => {regions.highlight();},
+            Route::Cheats => {cheats.highlight();},
         }
     }
 }

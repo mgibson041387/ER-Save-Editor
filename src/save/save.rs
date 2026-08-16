@@ -104,6 +104,30 @@ pub mod save {
             }
         }
 
+        pub fn set_character_spirit_tuning_level(&mut self, index: usize, spirit_tuning_level: u8) {
+            match self {
+                SaveType::Unknown => panic!("Why are we here?"),
+                SaveType::PC(pc_save) => {
+                    pc_save.save_slots[index].save_slot.player_game_data.spirit_tuning_level = spirit_tuning_level;
+                }
+                SaveType::PlayStation(ps_save) => {
+                    ps_save.save_slots[index].player_game_data.spirit_tuning_level = spirit_tuning_level;
+                },
+            }
+        }
+
+        pub fn set_character_great_rune_active(&mut self, index: usize, great_rune_active: u8) {
+            match self {
+                SaveType::Unknown => panic!("Why are we here?"),
+                SaveType::PC(pc_save) => {
+                    pc_save.save_slots[index].save_slot.player_game_data.great_rune_active = great_rune_active;
+                }
+                SaveType::PlayStation(ps_save) => {
+                    ps_save.save_slots[index].player_game_data.great_rune_active = great_rune_active;
+                },
+            }
+        }
+
         pub fn set_character_health(&mut self, index: usize, health: u32) {
             match self {
                 SaveType::Unknown => panic!("Why are we here?"),
@@ -413,11 +437,11 @@ pub mod save {
             }
         }
 
-        pub fn get_regulation(&self) -> &[u8]{
+        pub fn get_regulation(&self) -> Vec<u8> {
             match self {
                 SaveType::Unknown => panic!("Why are we here?"),
-                SaveType::PC(pc_save) => &pc_save.user_data_11.user_data_11.regulation,
-                SaveType::PlayStation(ps_save) => &ps_save.user_data_11.regulation,
+                SaveType::PC(pc_save) => pc_save.user_data_11.user_data_11.regulation_source(),
+                SaveType::PlayStation(ps_save) => ps_save.user_data_11.regulation_source(),
             }
         }
 
@@ -775,7 +799,7 @@ pub mod save {
             if Self::is_pc(br) {
                 save.save_type = SaveType::PC(PCSave::read(br)?);
             }
-            else if Self::is_ps_save_wizard(br) {
+            else if Self::is_ps(br) || Self::is_ps_save_wizard(br) {
                 save.save_type = SaveType::PlayStation(PSSave::read(br)?);
             }
             else {
@@ -799,40 +823,122 @@ pub mod save {
 
     impl Save {
         pub fn from_path(path: &PathBuf) -> Result<Save, io::Error> {
-            let contents = fs::read(path).expect("Should have been able to read the file");
-            let mut br = BinaryReader::from_u8(&contents);
+            let contents = fs::read(path)?;
+            Self::from_bytes(&contents)
+        }
+
+        pub fn from_bytes(contents: &[u8]) -> Result<Save, io::Error> {
+            let mut br = BinaryReader::from_u8(contents);
             br.set_endian(binary_reader::Endian::Little);
 
             // Check if it's an actual save file
-            assert!(Self::is(&mut br));
+            if !Self::is(&mut br) {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "File is not a recognized Elden Ring save"));
+            }
 
             Self::read(&mut br)
         }
 
         // Check if it's a save file
         pub fn is(br: &mut BinaryReader) -> bool {
-            let is = Self::is_pc(br) || Self::is_ps_save_wizard(br);
+            let is = Self::is_pc(br) || Self::is_ps(br) || Self::is_ps_save_wizard(br);
             is
         }
 
         // Check if it's a PC save file
         pub fn is_pc(br: &mut BinaryReader) -> bool {
-            let magic = br.read_bytes(4).expect("");
-            let is_pc = magic == [66, 78, 68, 52];
+            let is_pc = match br.read_bytes(4) {
+                Ok(magic) => magic == [66, 78, 68, 52],
+                Err(_) => false,
+            };
             br.jmp(0);
             is_pc
+        }
+
+        // Check if it's a raw PlayStation save file (not run through Save Wizard's exporter)
+        pub fn is_ps(br: &mut BinaryReader) -> bool {
+            let is_ps = match br.read_bytes(4) {
+                Ok(magic) => magic == [0xCB, 0x01, 0x9C, 0x2C],
+                Err(_) => false,
+            };
+            br.jmp(0);
+            is_ps
         }
 
         // Check if it's a PS Save Wizard save file
         pub fn is_ps_save_wizard(br: &mut BinaryReader) -> bool {
             br.jmp(0x1960070);
-            let regulation = br.read_bytes(0x240010).expect("");
-            let digest = md5::compute(regulation);
-            let is_ps_save_wizard = digest == md5::Digest(REGULATION_MD5_CHECKSUM);
+            let is_ps_save_wizard = match br.read_bytes(0x240010) {
+                Ok(regulation) => {
+                    let digest = md5::compute(regulation);
+                    digest == md5::Digest(REGULATION_MD5_CHECKSUM)
+                },
+                Err(_) => false,
+            };
             br.jmp(0);
             is_ps_save_wizard
         }
     }
-    
+
+    #[cfg(test)]
+    mod crash_smoke_tests {
+        use super::*;
+        use std::io::Write as _;
+
+        fn temp_file(bytes: &[u8]) -> PathBuf {
+            let mut path = std::env::temp_dir();
+            path.push(format!("crash_smoke_{}.bin", std::process::id()));
+            let mut f = fs::File::create(&path).unwrap();
+            f.write_all(bytes).unwrap();
+            path
+        }
+
+        #[test]
+        fn tiny_garbage_file_does_not_panic() {
+            let path = temp_file(b"hello world");
+            let result = Save::from_path(&path);
+            assert!(result.is_err());
+            let _ = fs::remove_file(&path);
+        }
+
+        #[test]
+        fn empty_file_does_not_panic() {
+            let path = temp_file(b"");
+            let result = Save::from_path(&path);
+            assert!(result.is_err());
+            let _ = fs::remove_file(&path);
+        }
+
+        #[test]
+        fn medium_garbage_file_does_not_panic() {
+            // Bigger than 4 bytes but way smaller than the PS save-wizard offset, exercising is_ps_save_wizard's read_bytes failure path.
+            let path = temp_file(&vec![0x41u8; 5_000_000]);
+            let result = Save::from_path(&path);
+            assert!(result.is_err());
+            let _ = fs::remove_file(&path);
+        }
+
+        #[test]
+        fn nonexistent_file_does_not_panic() {
+            let path = PathBuf::from("/nonexistent/path/does_not_exist.sl2");
+            let result = Save::from_path(&path);
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn is_ps_recognizes_raw_playstation_magic() {
+            // Raw (non-SaveWizard-exported) PlayStation saves start with CB 01 9C 2C, distinct
+            // from the PC "BND4" magic. Found via a real user save that was being rejected as
+            // "not a recognized Elden Ring save" -- this magic wasn't checked for at all before.
+            let mut bytes = vec![0u8; 32];
+            bytes[0..4].copy_from_slice(&[0xCB, 0x01, 0x9C, 0x2C]);
+            let mut br = BinaryReader::from_u8(&bytes);
+            br.set_endian(binary_reader::Endian::Little);
+
+            assert!(Save::is_ps(&mut br));
+            assert!(!Save::is_pc(&mut br));
+            assert!(Save::is(&mut br));
+        }
+    }
 }
 

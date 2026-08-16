@@ -1,0 +1,27 @@
+# NPM/Cloudflare Tunnel terminate TLS and forward to us over plain HTTP, so $scheme here is
+# always "http" even when the original client request was HTTPS. Prefer the
+# X-Forwarded-Proto header the reverse proxy sets; fall back to $scheme for
+# direct/local access that isn't behind a proxy at all.
+map $http_x_forwarded_proto $real_scheme {
+    default $http_x_forwarded_proto;
+    ''      $scheme;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    # Convenience redirects so hitting the container root (e.g. direct port
+    # access without the path prefix) lands on the app instead of a 404.
+    location = / {
+        return 301 $real_scheme://$http_host${BASE_PATH}/;
+    }
+    location = ${BASE_PATH} {
+        return 301 $real_scheme://$http_host${BASE_PATH}/;
+    }
+
+    location ${BASE_PATH}/ {
+        alias /usr/share/nginx/html/;
+        try_files $uri $uri/ =404;
+    }
+}

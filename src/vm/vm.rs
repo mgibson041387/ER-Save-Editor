@@ -36,7 +36,8 @@ pub mod vm {
     #[derive(Clone)]
     pub struct ViewModel {
         pub active: Option<bool>,
-        pub index: usize, 
+        pub invalid_reason: Option<String>,
+        pub index: usize,
         pub steam_id: String,
         pub profile_summary: [ProfileSummaryViewModel; 0xA],
         pub slots: [SlotViewModel; 0xA],
@@ -47,8 +48,9 @@ pub mod vm {
         fn default() -> Self {
             Self {
                 active: Default::default(),
+                invalid_reason: Default::default(),
                 index: Default::default(),
-                steam_id: Default::default(), 
+                steam_id: Default::default(),
                 slots: Default::default(),
                 profile_summary: Default::default(),
                 regulation: Default::default(),
@@ -64,7 +66,13 @@ pub mod vm {
             Regulation::init_params(save);
 
             // Check for irregular data
-            vm.active = Some(Validator::validate(save));
+            match Validator::validate(save) {
+                Ok(()) => vm.active = Some(true),
+                Err(reason) => {
+                    vm.active = Some(false);
+                    vm.invalid_reason = Some(reason);
+                }
+            }
             if vm.active.is_some_and(|v| !v) {return vm;}
 
             // Steam Id
@@ -136,14 +144,18 @@ pub mod vm {
                 stats_vm.faith +
                 stats_vm.arcane - 79;
 
-            save_type.set_character_health(index, HP[stats_vm.vigor as usize] as u32);
-            save_type.set_character_base_max_health(index, HP[stats_vm.vigor as usize] as u32);
+            let vigor_index = (stats_vm.vigor as usize).min(HP.len() - 1);
+            let mind_index = (stats_vm.mind as usize).min(FP.len() - 1);
+            let endurance_index = (stats_vm.endurance as usize).min(SP.len() - 1);
 
-            save_type.set_character_fp(index, FP[stats_vm.mind as usize] as u32);
-            save_type.set_character_base_max_fp(index, FP[stats_vm.mind as usize] as u32);
+            save_type.set_character_health(index, HP[vigor_index] as u32);
+            save_type.set_character_base_max_health(index, HP[vigor_index] as u32);
 
-            save_type.set_character_sp(index, SP[stats_vm.endurance as usize] as u32);
-            save_type.set_character_base_max_sp(index, SP[stats_vm.endurance as usize] as u32);
+            save_type.set_character_fp(index, FP[mind_index] as u32);
+            save_type.set_character_base_max_fp(index, FP[mind_index] as u32);
+
+            save_type.set_character_sp(index, SP[endurance_index] as u32);
+            save_type.set_character_base_max_sp(index, SP[endurance_index] as u32);
 
             save_type.set_character_level(index, level);
             save_type.set_character_vigor(index, stats_vm.vigor);
@@ -156,6 +168,8 @@ pub mod vm {
             save_type.set_character_arcane(index, stats_vm.arcane);
 
             save_type.set_character_souls(index, stats_vm.souls);
+            save_type.set_character_spirit_tuning_level(index, stats_vm.spirit_tuning_level);
+            save_type.set_character_great_rune_active(index, stats_vm.great_rune_active as u8);
         }
 
         fn update_weapon_match_making_level(&self, save_type: &mut SaveType, index: usize) {
@@ -194,7 +208,7 @@ pub mod vm {
                             
                             // Extract weapon level based on wether weapon is somber or not
                             let weapon_level = if is_somber{
-                                somber_to_normal[&((held_item.item_id % 100) as u8)]
+                                *somber_to_normal.get(&((held_item.item_id % 100) as u8)).unwrap_or(&0)
                             }
                             else {
                                 (held_item.item_id % 100) as u8
@@ -227,7 +241,7 @@ pub mod vm {
                             
                             // Extract weapon level based on wether weapon is somber or not
                             let weapon_level = if is_somber{
-                                somber_to_normal[&((storage_item.item_id % 100) as u8)]
+                                *somber_to_normal.get(&((storage_item.item_id % 100) as u8)).unwrap_or(&0)
                             }
                             else {
                                 (storage_item.item_id % 100) as u8

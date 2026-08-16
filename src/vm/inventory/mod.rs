@@ -51,8 +51,9 @@ pub enum InventorySubTypeRoute {
 }
 
 #[derive(PartialEq, Clone, Default, Copy)]
+#[repr(u32)]
 pub enum InventoryItemType {
-    #[default] None = -1,
+    #[default] None = -1i32 as u32,
     WEAPON = 0x0,
     ARMOR = 0x10000000,
     ACCESSORY = 0x20000000,
@@ -85,8 +86,9 @@ impl ToString for InventoryItemType {
 }
 
 #[derive(Default, Clone, PartialEq)]
+#[repr(u32)]
 pub enum InventoryGaitemType {
-    #[default] EMPTY = -1,
+    #[default] EMPTY = -1i32 as u32,
     WEAPON = 0x80000000,
     ARMOR = 0x90000000,
     ACCESSORY = 0xa0000000,
@@ -115,6 +117,20 @@ pub struct InventoryItemViewModel  {
     pub inventory_index: u32,
     pub equip_index: u32,
     pub r#type: InventoryGaitemType,
+}
+
+/// State for the item edit popup, opened by clicking an item in the Browse screen.
+#[derive(Clone)]
+pub struct EditingItem {
+    pub storage_index: usize,
+    pub is_key_item: bool,
+    pub ga_item_handle: u32,
+    pub item_id: u32,
+    pub item_name: String,
+    pub r#type: InventoryGaitemType,
+    pub quantity_edit: u32,
+    pub upgrade_level_edit: u32,
+    pub max_upgrade_level: u32,
 }
 
 impl InventoryItemViewModel {
@@ -205,6 +221,9 @@ pub struct InventoryViewModel  {
 
     // Data
     pub filter_text: String,
+    // Separate from filter_text so searching in the Bulk add tab doesn't leak into (or get
+    // clobbered by) the Single add tab / Browse screen's filter.
+    pub bulk_filter_text: String,
     pub storage: Vec<InventoryStorage>,
     pub infusions: Vec<(i32, String)>,
     pub gaitem_map: Vec<GaItem>,
@@ -224,6 +243,12 @@ pub struct InventoryViewModel  {
     
     // Changed indicator
     pub changed: bool,
+
+    // UI state for the "Clear All Inventory" confirmation dialog
+    pub confirm_clear_all: bool,
+
+    // UI state for the item edit popup
+    pub editing_item: Option<EditingItem>,
 
     // Log
     pub log: Vec<String>,
@@ -287,7 +312,7 @@ impl InventoryViewModel {
 
             match inventory_gaitem_type {
                 InventoryGaitemType::WEAPON => {
-                    let gaitem = self.gaitem_map.iter().find(|gaitem| gaitem.gaitem_handle == item.ga_item_handle).unwrap();
+                    let gaitem = self.gaitem_map.iter().find(|gaitem| gaitem.gaitem_handle == item.ga_item_handle).cloned().unwrap_or_default();
                     let inventory_item_vm = InventoryItemViewModel::from_save(&item, equip_index, &gaitem, InventoryGaitemType::WEAPON);
                     if inventory_item_vm.item_id == 110000 && self.unarmed.item_id != 110000 {self.unarmed = inventory_item_vm.clone();}
                     inventory_storage.common_items.push(inventory_item_vm.clone());
@@ -295,7 +320,7 @@ impl InventoryViewModel {
 
                 },
                 InventoryGaitemType::ARMOR => {
-                    let gaitem = self.gaitem_map.iter().find(|gaitem| gaitem.gaitem_handle == item.ga_item_handle).unwrap();
+                    let gaitem = self.gaitem_map.iter().find(|gaitem| gaitem.gaitem_handle == item.ga_item_handle).cloned().unwrap_or_default();
                     let inventory_item_vm = InventoryItemViewModel::from_save(&item, equip_index, &gaitem, InventoryGaitemType::ARMOR);
                     if inventory_item_vm.item_id == 10000 {self.naked_head = inventory_item_vm.clone();}
                     else if inventory_item_vm.item_id == 10100 {self.naked_body = inventory_item_vm.clone();}
@@ -315,7 +340,7 @@ impl InventoryViewModel {
                     inventory_storage.filtered_items.push( inventory_item_vm);
                 },
                 InventoryGaitemType::AOW => {
-                    let gaitem = self.gaitem_map.iter().find(|gaitem| gaitem.gaitem_handle == item.ga_item_handle).unwrap();
+                    let gaitem = self.gaitem_map.iter().find(|gaitem| gaitem.gaitem_handle == item.ga_item_handle).cloned().unwrap_or_default();
                     let inventory_item_vm = InventoryItemViewModel::from_save(&item, equip_index, &gaitem, InventoryGaitemType::AOW);
                     inventory_storage.common_items.push(inventory_item_vm.clone());
                     inventory_storage.filtered_aows.push( inventory_item_vm);
@@ -555,3 +580,5 @@ impl InventoryViewModel {
 // Splitting up inventory into multiple files
 mod add_single;
 mod add_bulk;
+mod remove;
+pub mod edit;

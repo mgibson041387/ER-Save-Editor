@@ -1,5 +1,6 @@
 mod custom;
 pub mod menu;
+pub mod cheats;
 pub mod none;
 pub mod general;
 pub mod stats;

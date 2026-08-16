@@ -4,7 +4,7 @@ pub mod regulation_view_model {
     use crate::{util::regulation::Regulation, vm::inventory::{InventoryItemType, InventoryTypeRoute}};
     
 
-    #[derive(Clone, PartialEq)]
+    #[derive(Clone, PartialEq, Debug)]
     pub enum ProtectorCategory {
         Head,
         Body,
